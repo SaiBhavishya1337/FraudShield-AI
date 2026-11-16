@@ -3,55 +3,147 @@ import { useState } from 'react';
 import './App.css';
 import Analytics from './Analytics';
 
+const API_URL = 'https://fraudshield-ai-1-vjvo.onrender.com';
+
+const numericFields = [
+  'TransactionAmt', 'card1', 'card2', 'card3',
+  'card5', 'addr1', 'addr2', 'dist1', 'dist2'
+];
+
+const fieldGroups = [
+  {
+    title: 'Transaction Details',
+    fields: [
+      { name: 'TransactionAmt', label: 'Transaction Amount', type: 'number', required: true },
+      { name: 'ProductCD', label: 'Product Category', type: 'text' }
+    ]
+  },
+  {
+    title: 'Card Details',
+    fields: [
+      { name: 'card1', label: 'Card 1', type: 'number' },
+      { name: 'card2', label: 'Card 2', type: 'number' },
+      { name: 'card3', label: 'Card 3', type: 'number' },
+      { name: 'card4', label: 'Card 4 (Brand)', type: 'text' },
+      { name: 'card5', label: 'Card 5', type: 'number' },
+      { name: 'card6', label: 'Card 6 (Type)', type: 'text' }
+    ]
+  },
+  {
+    title: 'Address and Distance',
+    fields: [
+      { name: 'addr1', label: 'Address 1', type: 'number' },
+      { name: 'addr2', label: 'Address 2', type: 'number' },
+      { name: 'dist1', label: 'Distance 1', type: 'number' },
+      { name: 'dist2', label: 'Distance 2', type: 'number' }
+    ]
+  },
+  {
+    title: 'Email Details',
+    fields: [
+      { name: 'P_emaildomain', label: 'Purchaser Email Domain', type: 'text' },
+      { name: 'R_emaildomain', label: 'Recipient Email Domain', type: 'text' }
+    ]
+  },
+  {
+    title: 'Device Details',
+    fields: [
+      { name: 'DeviceType', label: 'Device Type', type: 'text' },
+      { name: 'DeviceInfo', label: 'Device Information', type: 'text' },
+      { name: 'id_30', label: 'Operating System', type: 'text' },
+      { name: 'id_31', label: 'Browser', type: 'text' }
+    ]
+  }
+];
+
+const initialForm = {
+  TransactionAmt: '',
+  ProductCD: '',
+  card1: '',
+  card2: '',
+  card3: '',
+  card4: '',
+  card5: '',
+  card6: '',
+  addr1: '',
+  addr2: '',
+  dist1: '',
+  dist2: '',
+  P_emaildomain: '',
+  R_emaildomain: '',
+  DeviceType: '',
+  DeviceInfo: '',
+  id_30: '',
+  id_31: ''
+};
+
 function App() {
   const [page, setPage] = useState('Dashboard');
-
   const [transactionId, setTransactionId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [formData, setFormData] = useState(initialForm);
   const [result, setResult] = useState(null);
 
   const [csvFile, setCsvFile] = useState(null);
   const [csvResult, setCsvResult] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
-  // Manual transaction detection
+  function updateField(name, value) {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }
+
   async function detectFraud(e) {
     e.preventDefault();
+    setAnalyzing(true);
+    setResult(null);
 
     try {
-      const response = await fetch('https://fraudshield-ai-1-vjvo.onrender.com/predict', {
+      const payload = {};
+
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value.trim() === '') {
+          payload[key] = null;
+        } else if (numericFields.includes(key)) {
+          payload[key] = Number(value);
+        } else {
+          payload[key] = value;
+        }
+      });
+
+      const response = await fetch(`${API_URL}/predict`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transaction_id: transactionId,
-          amount: Number(amount)
-        })
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Request failed');
+        throw new Error(data.error || 'Prediction failed');
       }
 
       setResult({
-        id: data.transaction_id,
-        amount: Number(data.amount).toFixed(2),
-        status: data.risk_status,
-        message: data.message
+        id: transactionId || 'Not provided',
+        amount: data.amount,
+        status: data.prediction,
+        score: data.fraud_risk_score
       });
 
     } catch (error) {
       setResult({
-        id: transactionId,
-        amount,
         status: 'Error',
         message: error.message
       });
+    } finally {
+      setAnalyzing(false);
     }
   }
 
-  // CSV bulk detection
   async function uploadCSV(e) {
     e.preventDefault();
 
@@ -67,13 +159,10 @@ function App() {
     setCsvResult(null);
 
     try {
-      const response = await fetch(
-        'http://127.0.0.1:5000/predict_csv',
-        {
-          method: 'POST',
-          body: formData
-        }
-      );
+      const response = await fetch(`${API_URL}/predict_csv`, {
+        method: 'POST',
+        body: formData
+      });
 
       const data = await response.json();
 
@@ -90,7 +179,6 @@ function App() {
     }
   }
 
-  // Reports page
   function ReportsPage() {
     const reports = [
       { title: 'Total Transactions', value: '284,807', icon: '📊' },
@@ -122,7 +210,7 @@ function App() {
     return (
       <section style={{ padding: '25px' }}>
         <h2>Fraud Detection Reports</h2>
-        <p>Credit Card Transaction Summary</p>
+        <p>Original Credit Card Dataset Summary</p>
 
         <button onClick={downloadReport}>
           ⬇ Download CSV
@@ -156,14 +244,11 @@ function App() {
         }}>
           <h2>Report Summary</h2>
           <p>
-            A total of 284,807 transactions were analyzed
-            in the original dataset.
+            Original dataset contained 284,807 transactions.
           </p>
           <p>Fraud cases: 492</p>
           <p>Genuine transactions: 284,315</p>
           <p>Fraud rate: 0.173%</p>
-          <p style={{ color: '#fbbf24' }}>
-          </p>
         </div>
       </section>
     );
@@ -209,10 +294,7 @@ function App() {
             <h1>{page}</h1>
             <p>Credit Card Fraud Detection System</p>
           </div>
-
-          <div className="profile">
-            Admin 👤
-          </div>
+          <div className="profile">Admin 👤</div>
         </header>
 
         {/* DASHBOARD */}
@@ -255,7 +337,6 @@ function App() {
             <div className="panel" style={{ marginTop: 25 }}>
               <h3>Start Fraud Detection</h3>
               <p>Check a transaction for suspicious activity.</p>
-
               <button onClick={() => setPage('Fraud Detection')}>
                 Open Detection →
               </button>
@@ -268,49 +349,77 @@ function App() {
           <section className="panel prediction">
 
             <h2>Transaction Analysis</h2>
-            <p>Enter transaction details for screening.</p>
+            <p>Enter available transaction details for screening.</p>
 
             <form onSubmit={detectFraud}>
-              <label>Transaction ID</label>
 
+              <label>Transaction ID (Optional)</label>
               <input
                 type="text"
                 placeholder="Enter transaction ID"
                 value={transactionId}
                 onChange={e => setTransactionId(e.target.value)}
-                required
               />
 
-              <label>Transaction Amount (₹)</label>
+              {fieldGroups.map(group => (
+                <div key={group.title} style={{ marginTop: '25px' }}>
+                  <h3>{group.title}</h3>
 
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                placeholder="Enter amount"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                required
-              />
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '15px'
+                  }}>
+                    {group.fields.map(field => (
+                      <div key={field.name}>
+                        <label>{field.label}</label>
+                        <input
+                          type={field.type}
+                          step={field.type === 'number' ? 'any' : undefined}
+                          min={field.name === 'TransactionAmt' ? '0' : undefined}
+                          placeholder={`Enter ${field.label}`}
+                          value={formData[field.name]}
+                          onChange={e => updateField(field.name, e.target.value)}
+                          required={field.required || false}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
 
-              <button type="submit">
-                Analyze Transaction
+              <button type="submit" disabled={analyzing}>
+                {analyzing ? 'Analyzing...' : 'Analyze Transaction'}
               </button>
             </form>
 
             {result && (
               <div className="result">
                 <h3>Transaction Analysis Result</h3>
-                <p>Transaction ID: {result.id}</p>
-                <p>Amount: ₹{result.amount}</p>
-                <p>Status: {result.status}</p>
-                <p>{result.message}</p>
+
+                {result.status === 'Error' ? (
+                  <p>Error: {result.message}</p>
+                ) : (
+                  <>
+                    <p>Transaction ID: {result.id}</p>
+                    <p>Amount: {result.amount}</p>
+                    <p>
+                      Status: <strong>{result.status}</strong>
+                    </p>
+                    <p>
+                      Fraud Risk Score: {result.score}%
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
+            {/* CSV BULK DETECTION */}
             <div className="csv-upload">
               <h2>Bulk Fraud Detection</h2>
-              <p>Upload a CSV containing all 30 transaction features.</p>
+              <p>
+                Upload a CSV containing all 18 selected model features.
+              </p>
 
               <form onSubmit={uploadCSV}>
                 <input
@@ -332,7 +441,9 @@ function App() {
                   <h3>CSV Analysis Results</h3>
                   <p>Total Transactions: {csvResult.total_transactions}</p>
                   <p>Fraud Detected: {csvResult.fraud_detected}</p>
-                  <p>Genuine Transactions: {csvResult.genuine_transactions}</p>
+                  <p>
+                    Genuine Transactions: {csvResult.genuine_transactions}
+                  </p>
                   <p>Fraud Percentage: {csvResult.fraud_percentage}%</p>
 
                   <h3>Prediction Preview</h3>
