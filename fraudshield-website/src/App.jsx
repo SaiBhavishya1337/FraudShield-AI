@@ -3,8 +3,7 @@ import { useState } from 'react';
 import './App.css';
 import Analytics from './Analytics';
 
-const API_URL = 'https://fraudshield-ai-1-vjvo.onrender.com';
-
+const API_URL = "https://fraudshield-ai-2-355b.onrender.com";
 const numericFields = [
   'TransactionAmt', 'card1', 'card2', 'card3',
   'card5', 'addr1', 'addr2', 'dist1', 'dist2'
